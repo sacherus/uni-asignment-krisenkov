@@ -1,0 +1,65 @@
+version: "3.7"
+
+services:
+  web:
+    build: ./
+    depends_on:
+    - postgres
+    - rabbitmq
+    env_file:
+    - .env
+    volumes:
+    - ./:/uni-assignment-metars:delegated
+    ports:
+    - "8000:8000"
+    command: ./manage.py runserver 0.0.0.0:8000
+
+  tests:
+    build: ./
+    env_file:
+    - .env
+    volumes:
+    - ./:/uni-assignment-metars:delegated
+    command: bash -c './wait-for-it.sh postgres:5432 -- ./run-tests.sh'
+
+  postgres:
+    image: geelweb/postgis:9.6
+    ports:
+    - "5432"
+    volumes:
+    - pgdata:/var/lib/postgresql/data/
+    environment:
+    - POSTGRES_DB=uni_assignment_metars
+    healthcheck:
+      test: "pg_isready -h localhost -p 5432 -q -U postgres"
+      interval: 3s
+      timeout: 5s
+      retries: 3
+
+  celery:
+    build: ./
+    depends_on:
+    - rabbitmq
+    - postgres
+    env_file:
+    - .env
+    volumes:
+    - ./:/uni-assignment-metars:delegated
+    command: ['watchmedo','auto-restart','-d','.','-p','"*.py"','-R','--','celery', 'worker',  '-A', 'uni_assignment_metars', '-B']
+
+  rabbitmq:
+    image: rabbitmq:3.7.8
+    ports:
+    - "5672"
+    environment:
+    - RABBITMQ_DEFAULT_VHOST=uni_assignment_metars
+    - RABBITMQ_DEFAULT_USER=uni_assignment_metars_user
+    - RABBITMQ_DEFAULT_PASS=uni_assignment_metars_pass
+    healthcheck:
+      test: "rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$$(hostname).pid"
+      interval: 3s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pgdata:
